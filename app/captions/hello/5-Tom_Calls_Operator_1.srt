@@ -1,0 +1,11 @@
+1
+00:00:00,000 --> 00:00:11,000
+Tom:  Fire! Fire station. I have to talk to the fire station...fire!
+
+2
+00:00:11,000 --> 00:00:21,000
+Tom:  I said fire! Please, please connect me to the fire station! 
+
+3
+00:00:21,000 --> 00:00:27,000
+Tom:  Operator, are you there? I said fire station! Fire!

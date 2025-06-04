@@ -1,0 +1,15 @@
+1
+00:00:00,000 --> 00:00:05,000
+Chief Burns: Operator, it's Chief Burns. I know half the town is calling, so please reassure people.
+
+2
+00:00:05,000 --> 00:00:11,000
+Chief Burns: No people or animals were harmed, but the barn burned to the ground.
+
+3
+00:00:11,000 --> 00:00:18,000
+Chief Burns: No one will be at the station for a bit until we get cleaned up here, so any emergencies, ring me here at the Libby's, please.
+
+4
+00:00:18,000 --> 00:00:21,000
+Chief Burns:  Thanks for all your work today. Bye.

@@ -1,0 +1,11 @@
+1
+00:00:00,000 --> 00:00:01,685
+Charlie Freeman: Freeman residence, Charlie speaking. 
+
+2
+00:00:01,685 --> 00:00:03,290
+Tom: I gotta talk to the Doctor. 
+
+3
+00:00:03,290 --> 00:00:08,995
+Charlie: He went to see Mrs. White. Who's this? Hello? Hello?

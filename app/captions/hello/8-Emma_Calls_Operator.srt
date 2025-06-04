@@ -1,0 +1,11 @@
+1
+00:00:00,000 --> 00:00:10,000
+Emma: Hi, it's Emma Powers at the store. I need to call home. 
+
+2
+00:00:10,000 --> 00:00:21,700
+Emma: Operator, please connect me with 72, the Powers's house. I want to talk to Olive.
+
+3
+00:00:21,700 --> 00:00:26,200
+Emma: Hello, operator, can you help? I need the Powers's. Number 72, please.

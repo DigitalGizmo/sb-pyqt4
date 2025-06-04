@@ -1,0 +1,24 @@
+ 1
+00:00:00,000 --> 00:00:01,655
+Chief Burns: Fire station.  Chief Burns here.
+
+2
+00:00:01,655 --> 00:00:04,770
+Mina: Hi Chief, it's Mina. I can smell smoke.  
+Chief Burns:  Where are you? 
+
+3
+00:00:04,770  --> 00:00:08,250
+Mina:  I'm home now but I smelled it by  Mrs. Fowler's house.  You know, on Maple Street. 
+
+4
+00:00:08,250 --> 00:00:09,650
+Chief Burns: Is there smoke in the house? 
+
+5
+00:00:09,650 --> 00:00:12,628
+Mina: No, I was like, outside riding my bike and she said to ring you.
+
+6
+00:00:12,628 --> 00:00:14,216
+Chief Burns:  Okay. Thanks, we'll check it out.

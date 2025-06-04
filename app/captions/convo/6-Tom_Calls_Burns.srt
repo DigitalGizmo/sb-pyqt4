@@ -1,0 +1,13 @@
+1
+00:00:00,000 --> 00:00:05,745
+Chief Burns: Fire Station. Chief Burns here...
+Tom:  Fire!  In the barn.  My uncle's trying to get the cows out.  I ran…but…
+
+2
+00:00:05,745  --> 00:00:08,790
+Chief Burns:  Calm down, son. This is Tom at the Libby Farm, right? 
+
+3 
+00:00:08,790  --> 00:00:11,940
+Tom: Yes, Libby Farm. Hurry!
+Chief Burns:  We're on our way.

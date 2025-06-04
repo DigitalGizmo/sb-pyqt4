@@ -1,0 +1,101 @@
+[
+    {
+    "callLabel": "index 0, call 1  Charlie calls Olive",
+    "caller": {"index": 4}, "callerLabel": "Charlie Freeman 3",
+    "callee":{"index": 6}, "calleeLabel": "Olive Powers 4",  
+    "helloFile": "1-Charlie_Operator",
+    "convoFile": "2-Charlie_Calls_Olive",
+    "retryAfterWrongFile": "Charlie_WrongNumber_Olive",
+    "retryAfterWrongText": "No, that's not who I want, I want to speak<br/> to Olive at the Powers' residence, number 72.",
+    "okTimeHello": 3000,
+    "okTimeConvo": 11400
+  },  
+  {
+    "callLabel": "index 1. call 2 Mina calls fire department",
+    "caller": {"index": 0}, "callerLabel": " Mina Newell 2 ",
+    "callee":{"index": 11}, "calleeLabel": " Fire, Cheif Burns  7",
+    "helloFile": "3-Mina_Calls_Operator",
+    "convoFile": "4-Mina_Calls_Burns",
+    "retryAfterWrongFile": "Mina_WrongNumber_FireStation",
+    "retryAfterWrongText": "No, that's not who I want, get me the  <br/> Fire Station, please. Number 111.",
+    "okTimeHello": 3000,
+    "okTimeConvo": 7450
+  },  
+  {
+    "callLabel": "index 2, call 3 Tom calls fire department",
+    "caller": {"index": 9}, "callerLabel": "Tom 6",
+    "callee":{"index": 11}, "calleeLabel": " Chief Burns",
+    "helloFile": "5-Tom_Calls_Operator_1",
+    "convoFile": "6-Tom_Calls_Burns",
+    "retryAfterWrongFile": "Tom_WrongNumber_FireStation",
+    "retryAfterWrongText": "No, that's not who I want, I want the Fire Station. Number 111.",    
+    "okTimeHello": 3000,
+    "okTimeConvo": 5800
+  },  
+  {
+    "callLabel": "index 3, call 4 Tressa calls",
+    "caller": { "index": 7}, "callerLabel": " Tressa 5 to operator ",
+    "callee":{"index": 15}, "calleeLabel": " None! , ",
+    "helloFile": "7-Tressa_Calls_Operator",
+    "convoFile": "",
+    "retryAfterWrongFile": "",
+    "retryAfterWrongText": "",
+    "okTimeHello": 9400,
+    "okTimeConvo": 0
+  },  
+  {
+    "callLabel": "index 4 call, 5 Emma calls Olive",
+    "caller": { "index": 3}, "callerLabel": " Emma 0 to operator ",
+    "callee":{"index": 6}, "calleeLabel": " Olive 4  ",
+    "helloFile": "8-Emma_Calls_Operator",
+    "convoFile": "9-Emma_Calls_Olive",
+    "retryAfterWrongFile": "Emma_WrongNumber_Caller",
+    "retryAfterWrongText": "No, that's not who I want, please connect me <br/> to the Powers' residence, number 72.",
+    "okTimeHello": 3000,
+    "okTimeConvo": 12630
+  },  
+  {
+    "callLabel": "index 5 , call 6 Tom to Doctor",
+    "caller": { "index": 9}, "callerLabel": " Tom Libby 6",
+    "callee":{"index": 4}, "calleeLabel": "  Dr Freeman 3",
+    "helloFile": "10-Tom_Calls_Operator_2",
+    "convoFile": "11-Tom_Calls_Charlie",
+    "retryAfterWrongFile": "Tom_WrongNumber_Dr",
+    "retryAfterWrongText": "No, that's not who I want, connect me with Dr. Freeman. Number 56.",
+    "okTimeHello": 3000,
+    "okTimeConvo": 5760
+  },  
+  {
+    "callLabel": "new: index 6 , call 7 Cleo to Mina",
+    "caller": { "index": 10}, "callerLabel": " Cleo Bryant",
+    "callee":{"index": 0}, "calleeLabel": "  Mina",
+    "helloFile": "11a-Cleo_Calls_Operator",
+    "convoFile": "11b-Cleo_Calls_Mina",
+    "retryAfterWrongFile": "Cleo_WrongNumber_Caller",
+    "retryAfterWrongText": "No, that's not who I want, get me Mina Newell please. Number 44.",
+    "okTimeHello": 3000,
+    "okTimeConvo": 10200
+  },  
+  {
+    "callLabel": "now: idx 7, call 8  Tom to Mrs White",
+    "caller": { "index": 9}, "callerLabel": " Tom Libby 6",
+    "callee":{"index": 2}, "calleeLabel": " Mrs. White  1",
+    "helloFile": "12-Tom_Calls_Operator_3",
+    "convoFile": "13-Tom_Calls_Mrs.White",
+    "retryAfterWrongFile": "Tom_WrongNumber_MrsWhite",
+    "retryAfterWrongText": "No, that's not Mrs. White, I need to speak to Mrs. White. Number 41.",
+    "okTimeHello": 3000,
+    "okTimeConvo": 15200
+  },  
+  {
+    "callLabel": "index 8, call 9",
+    "caller": { "index": 9}, "callerLabel": " Chief Burns, but from Libby's 6 farm",
+    "callee":{"index": 15}, "calleeLabel": "  Operator only",
+    "helloFile": "14-ChiefBurns_Calls_Operator",
+    "convoFile": "",
+    "retryAfterWrongFile": "",
+    "retryAfterWrongText": "",
+    "okTimeHello": 14200,
+    "okTimeConvo": 0
+  } 
+]

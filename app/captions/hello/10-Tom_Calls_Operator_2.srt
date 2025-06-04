@@ -1,0 +1,11 @@
+1
+00:00:00,000 --> 00:00:08,000
+Tom:  I need the doctor. Doc Freeman
+
+2
+00:00:08,000 --> 00:00:17,000
+Tom:  Operator, I said Doctor Freeman's, please.
+
+3
+00:00:17,000 --> 00:00:22,000
+Tom:  Hello, it's important, I need Doctor Freeman, number 56!

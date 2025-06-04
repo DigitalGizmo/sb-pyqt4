@@ -1,0 +1,11 @@
+1
+00:00:00,000 --> 00:00:08,000
+Cleo:  Hey, can you please get me Mina?
+
+2
+00:00:08,000 --> 00:00:18,000
+Cleo:  Hello, please connect me to Mina Newell.
+
+3
+00:00:18,000 --> 00:00:23,000
+Cleo:  Hey operator, can you help me? Mina Newell, number 44, please!

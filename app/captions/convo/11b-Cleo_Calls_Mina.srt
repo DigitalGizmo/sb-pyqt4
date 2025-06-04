@@ -1,0 +1,19 @@
+1
+00:00:00,000 --> 00:00:01,100
+Mina: Hello?
+
+2
+00:00:01,100 --> 00:00:05,184
+Cleo: Hey Mina. So, I failed the math test. Can I borrow your notes?
+
+3
+00:00:05,184 --> 00:00:09,231
+Mina: Yeah, come on over. Oh! And I'll tell you about the fire.
+
+4
+00:00:09,231 --> 00:00:11,180
+Cleo: Ooh, okay, be right over!
+
+5
+00:00:11,180  --> 00:00:12,000
+Mina: See you.

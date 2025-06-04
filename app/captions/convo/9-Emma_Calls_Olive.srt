@@ -1,0 +1,30 @@
+1
+00:00:000,000 --> 00:00:02,415
+Olive: Hello?
+Emma: Honey, are you okay? 
+
+2
+00:00:02,415 --> 00:00:04,000
+Olive: The Libby's barn is on fire!
+
+3
+00:00:04,000 --> 00:00:07,890
+Emma: I heard the fire truck. Is the wind blowing towards our house? Any sparks?
+
+4
+00:00:07,890 --> 00:00:10,235
+Olive: No, but I can see the flames and Tom was running!
+
+5
+00:00:10,235 --> 00:00:14,325
+Emma: Will you stay inside, honey? I can't leave the store yet, but I'll be home soon and...
+
+6 
+00:00:14,325 --> 00:00:18,844
+Olive: Ooo the truck just got there.
+Emma: Olive, do you hear me? Not one foot outside, okay? 
+
+7 
+00:00:18,844 --> 00:00:21,533
+Olive: Oh, mom.
+Emma: Sit tight. Bye
