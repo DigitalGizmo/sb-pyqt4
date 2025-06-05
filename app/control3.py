@@ -12,7 +12,7 @@ from digitalio import Direction, Pull
 from RPi import GPIO
 from adafruit_mcp230xx.mcp23017 import MCP23017
 
-from model import Model
+from model3 import Model
 
 class MainWindow(qtw.QMainWindow): 
     # Most of this module is analogous to svelte Panel
