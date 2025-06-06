@@ -32,6 +32,9 @@ class Model(qtc.QObject):
     setTimeToEndSignal = qtc.pyqtSignal()
     checkDualUnplugSignal = qtc.pyqtSignal(int)
     playRequestCorrectSignal = qtc.pyqtSignal()
+    
+    # NEW: Add a signal for thread-safe operator-only hello ending
+    endOperatorOnlySignal = qtc.pyqtSignal()
 
     buzzInstace = vlc.Instance()
     buzzPlayer = buzzInstace.media_player_new()
@@ -76,6 +79,9 @@ class Model(qtc.QObject):
         # signal calls timeer directly
         self.checkDualUnplugSignal.connect(self.dualUnplugTimer.start)
         self.dualUnplugTimer.timeout.connect(self.checkDualUnplug)
+        
+        # NEW: Connect the thread-safe signal to the actual handler
+        self.endOperatorOnlySignal.connect(self.handleEndOperatorOnly)
 
         self.reset()
 
@@ -190,15 +196,29 @@ class Model(qtc.QObject):
         # Send msg to screen
         self.displayCaptionSignal.emit('hello', conversations[_currConvo]["helloFile"])
 
-
     def endOperatorOnlyHello(self, event): # , lineIndex
-        print("  - About to detach vlcEvent in endOperatorOnlyHello")
+        """
+        This is called from VLC thread - we need to use signals to get back to main thread
+        """
+        print("  - VLC callback endOperatorOnlyHello - emitting signal to main thread")
         print(f'  - event: {event}')
+        
+        # Don't do any timer operations here - just emit a signal to the main thread
+        if event is not None:
+            try:
+                self.vlcEvent.event_detach(vlc.EventType.MediaPlayerEndReached)
+            except:
+                pass
+        
+        # Emit signal to main thread to handle the actual logic
+        self.endOperatorOnlySignal.emit()
 
-        if ( event != None):
-            print('  - got to event !=None')
-            self.toneEvents.event_detach(vlc.EventType.MediaPlayerEndReached)
-
+    def handleEndOperatorOnly(self):
+        """
+        This runs in the main thread and can safely start timers
+        """
+        print("  - handleEndOperatorOnly in main thread")
+        
         #  supress further callbacks self.supressCallback
         # Don't know what this did in software proto
         # setHelloOnlyCompleted(lineIndex)
@@ -209,7 +229,7 @@ class Model(qtc.QObject):
             print(f" - Hello-only ended.  Bump currConvo from {self.currConvo}")
             self.incrementJustCalled = True
             self.currConvo += 1
-            # Timers can't be started from another thread
+            # Now this will work because we're in the main thread
             self.setTimeToNextSignal.emit(1000)
         else:
             print(f" - Hello-only ended, but currConvo already incremented to {self.currConvo}")
@@ -525,7 +545,8 @@ class Model(qtc.QObject):
                         stopTime > conversations[self.currConvo]["okTimeHello"]):
                         # Close enough to end, move on 
                         print(f'  - stopped operator only caller with time: {stopTime}')
-                        self.endOperatorOnlyHello(None)
+                        # Use the thread-safe signal instead of calling directly
+                        self.endOperatorOnlySignal.emit()
                     else:
                         self.clearTheLine()
                         self.callInitTimer.start(1000)
@@ -697,3 +718,5 @@ class Model(qtc.QObject):
             self.vlcEvent.event_detach(vlc.EventType.MediaPlayerEndReached)
         except:
             pass
+
+            
