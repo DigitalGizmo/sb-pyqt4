@@ -22,7 +22,10 @@ class MainWindow(qtw.QMainWindow):
     plugEventDetected = qtc.pyqtSignal()
     plugInToHandle = qtc.pyqtSignal(int)
     unPlugToHandle = qtc.pyqtSignal(int)
-    # wiggleDetected = qtc.pyqtSignal()
+    
+    # NEW: Thread-safe signal for GPIO interrupts
+    gpioInterruptSignal = qtc.pyqtSignal(list)  # Will carry the list of interrupt flags
+    
     awaitingRestart = False
     interrupt = 17
 
@@ -85,24 +88,19 @@ class MainWindow(qtw.QMainWindow):
         self.captions = 'empty'
         self.areCaptionsContinuing = True
 
-        # Supress interrupt when plug is just wiggled (disabled)
-        # self.wiggleDetected.connect(lambda: self.wiggleTimer.start(80))
-        # self.wiggleTimer=qtc.QTimer()
-        # self.wiggleTimer.setSingleShot(True)
-        # self.wiggleTimer.timeout.connect(self.checkWiggle)
-
         # Self (control) for gpio related, self.model for audio
         self.startPressed.connect(self.startSim)
-
-        # self.startPressed.connect(self.model.handleStart)
 
         # Bounce timer less than 200 cause failure to detect 2nd line
         # Tested with 100
         self.plugEventDetected.connect(lambda: self.bounceTimer.start(300))
         self.plugInToHandle.connect(self.model.handlePlugIn)
         self.unPlugToHandle.connect(self.model.handleUnPlug)
+        
+        # NEW: Connect the thread-safe GPIO signal
+        self.gpioInterruptSignal.connect(self.handleGpioInterrupt)
 
-        # Eventst from model.py
+        # Events from model.py
         self.model.displayTextSignal.connect(self.displayText)
         self.model.setLEDSignal.connect(self.setLED)
         # self.model.pinInEvent.connect(self.setPinsIn)
@@ -163,48 +161,49 @@ class MainWindow(qtw.QMainWindow):
         GPIO.add_event_detect(self.interrupt, GPIO.BOTH, callback=self.checkPin, bouncetime=50)
 
     def checkPin(self, port):
-        """Callback function to be called when an Interrupt occurs.
-        The signal for pluginEventDetected calls a timer -- it can't send
-        a parameter, so the work-around is to set pin_flag as a global.
+        """GPIO interrupt callback - runs in interrupt thread.
+        We must be thread-safe here, so we just gather data and emit a signal.
         """
-        for pin_flag in self.mcp.int_flag:
-            # print("Interrupt connected to Pin: {}".format(port))
-            print(f"* Interrupt - pin number: {pin_flag} changed to: {self.pins[pin_flag].value}")
+        try:
+            # Read interrupt flags and pin values in the interrupt thread
+            interrupt_data = []
+            for pin_flag in self.mcp.int_flag:
+                # Read the pin value while we're in the interrupt thread
+                pin_value = self.pins[pin_flag].value
+                interrupt_data.append((pin_flag, pin_value))
+            
+            # Emit signal to main thread with the data
+            if interrupt_data:
+                self.gpioInterruptSignal.emit(interrupt_data)
+        except Exception as e:
+            print(f"Error in GPIO interrupt handler: {e}")
+
+    def handleGpioInterrupt(self, interrupt_data):
+        """Handle GPIO interrupts in the main thread where Qt operations are safe"""
+        for pin_flag, pin_value in interrupt_data:
+            print(f"* Interrupt - pin number: {pin_flag} changed to: {pin_value}")
 
             # Test for phone jack vs start and stop buttons
-            if (pin_flag < 12):
+            if pin_flag < 12:
                 # Don't restart this interrupt checking if we're still
                 # in the pause part of bounce checking
-                if (not self.just_checked):
+                if not self.just_checked:
                     self.pinFlag = pin_flag
-                    
                     self.plugEventDetected.emit()
-                    # Starts bounceTimer which call continuePinCheck
+                    # Starts bounceTimer which calls continueCheckPin
 
             else:
-                print(" * got to interupt 12 or greater \n")
-                if (pin_flag == 13 and self.pins[13].value == False):
-                    # if (self.pins[13].value == False):
+                print(" * got to interrupt 12 or greater \n")
+                if pin_flag == 13 and pin_value == False:
                     self.startPressed.emit() # Calls stopMedia
-                elif (pin_flag == 12):
-                    print(f'   * got to stop, aka pin 12, ' + str(self.pins[12].value))
+                elif pin_flag == 12:
+                    print(f'   * got to stop, aka pin 12, {pin_value}')
                     self.stopSim()
-                # else:
-                #     print(f' * pin_flag: ' + str(pin_flag))
-
 
     def stopSim(self):
         print('stopping sim')
         self.label.setText("The Switchboard has stopped. Press the Start button to begin!")
-
         self.stopMedia()
-        
-        # if (self.getAnyPinsIn()):
-        #     self.label.setText("Remove phone plugs and when you're ready, press Start")
-        # else:
-        #     self.reset()
-        #     print('press start to begin')
-        #     # self.model.handleStart()        
 
     def startSim(self):
         self.stopMedia()
@@ -250,7 +249,7 @@ class MainWindow(qtw.QMainWindow):
             is_pin_in = self.pins[pinIndex].value == False
             self.model.setPinIn(pinIndex, is_pin_in)
 
-        # Set to input - later will get intrrupt as well
+        # Set to input - later will get interrupt as well
         for pinIndex in range(0, 16):
             self.pins[pinIndex].direction = Direction.INPUT
             self.pins[pinIndex].pull = Pull.UP
@@ -289,7 +288,7 @@ class MainWindow(qtw.QMainWindow):
         # self.setLED(2, True)          
 
     def continueCheckPin(self):
-        # Not able to send param through timer, so pinFlag has been set globaly
+        # Not able to send param through timer, so pinFlag has been set globally
         print(f" * In continue, pinFlag = {str(self.pinFlag)} " 
               f"  * value: {str(self.pins[self.pinFlag].value)}")
 
@@ -301,7 +300,7 @@ class MainWindow(qtw.QMainWindow):
             if (self.pins[self.pinFlag].value == False): 
                 # grounded by tip, aka connected
                 """
-                False/grouded, then this event is a plug-in
+                False/grounded, then this event is a plug-in
                 """
                 # Send pin index to model.py as an int 
                 # Model uses signals for LED, text and pinsIn to set here
@@ -317,7 +316,7 @@ class MainWindow(qtw.QMainWindow):
                     # print(f"Pin {self.pinFlag} has been disconnected \n")
                     print(f" * pin {self.pinFlag} was in - handleUnPlug")
 
-                    # On unplug we can't tell which line electonicaly 
+                    # On unplug we can't tell which line electronically 
                     # (diff in shaft is gone), so rely on pinsIn info
                     self.unPlugToHandle.emit(self.pinFlag) # , self.whichLinePlugging
                     # Model handleUnPlug will set pinsIn false for this on
@@ -336,21 +335,6 @@ class MainWindow(qtw.QMainWindow):
 
         # Experimental
         self.mcp.clear_ints()  # This seems to keep things fresh
-
-
-    # def checkWiggle(self):
-    #     print(" * got to checkWiggle")
-    #     # self.wiggleTimer.stop() -- now singleShot
-    #     # Check whether the pin is still grounded aka False
-    #     # if no longer grounded, proceed with event detection
-    #     if (not self.pins[self.pinFlag].value == False):
-    #         # The pin is no longer in
-    #         self.just_checked = True
-    #         self.plugEventDetected.emit()
-    #     else: 
-    #         # still grounded -- do nothing
-    #         # pin has been removed during pause
-    #         print(f'in wiggle-- not supposed to get here - grounded')
 
     def displayText(self, msg):
         self.label.setText(msg)        
@@ -412,7 +396,7 @@ class MainWindow(qtw.QMainWindow):
                 # Stop if unplugged
                 if (self.areCaptionsContinuing):
                     self.displayText(text)
-                # Proccess time
+                # Process time
                 times = time.split(' --> ')
                 # print(f'times[0]: {times[0]}')
                 start_time_ms = self.time_str_to_ms(times[0])

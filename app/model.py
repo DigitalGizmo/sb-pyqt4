@@ -32,6 +32,15 @@ class Model(qtc.QObject):
     setTimeToEndSignal = qtc.pyqtSignal()
     checkDualUnplugSignal = qtc.pyqtSignal(int)
     playRequestCorrectSignal = qtc.pyqtSignal()
+    
+    # NEW: Thread-safe signals for VLC callbacks
+    endOperatorOnlySignal = qtc.pyqtSignal()
+    playFullConvoSignal = qtc.pyqtSignal(int)  # currConvo
+    setCallCompletedSignal = qtc.pyqtSignal()
+    playFullWrongNumSignal = qtc.pyqtSignal(int)  # pluggedPersonIdx
+    startPlayRequestCorrectThreadSignal = qtc.pyqtSignal()
+    restartOnTimeoutSignal = qtc.pyqtSignal()
+    restartOnEndTimeoutSignal = qtc.pyqtSignal()
 
     buzzInstace = vlc.Instance()
     buzzPlayer = buzzInstace.media_player_new()
@@ -73,9 +82,18 @@ class Model(qtc.QObject):
         self.playRequestCorrectSignal.connect(self.playRequestCorrect)
         self.setTimeToEndSignal.connect(self.startEndTimer)
 
-        # signal calls timeer directly
+        # signal calls timer directly
         self.checkDualUnplugSignal.connect(self.dualUnplugTimer.start)
         self.dualUnplugTimer.timeout.connect(self.checkDualUnplug)
+        
+        # NEW: Connect thread-safe VLC signals to their handlers
+        self.endOperatorOnlySignal.connect(self.handleEndOperatorOnly)
+        self.playFullConvoSignal.connect(self.handlePlayFullConvo)
+        self.setCallCompletedSignal.connect(self.handleSetCallCompleted)
+        self.playFullWrongNumSignal.connect(self.handlePlayFullWrongNum)
+        self.startPlayRequestCorrectThreadSignal.connect(self.handleStartPlayRequestCorrect)
+        self.restartOnTimeoutSignal.connect(self.handleRestartOnTimeout)
+        self.restartOnEndTimeoutSignal.connect(self.handleRestartOnEndTimeout)
 
         self.reset()
 
@@ -192,24 +210,30 @@ class Model(qtc.QObject):
 
 
     def endOperatorOnlyHello(self, event): # , lineIndex
-        print("  - About to detach vlcEvent in endOperatorOnlyHello")
-        print(f'  - event: {event}')
+        """VLC callback - must be thread-safe"""
+        print("  - VLC callback endOperatorOnlyHello - emitting signal")
+        
+        if event != None:
+            try:
+                self.vlcEvent.event_detach(vlc.EventType.MediaPlayerEndReached)
+            except:
+                pass
+        
+        # Emit signal to main thread
+        self.endOperatorOnlySignal.emit()
 
-        if ( event != None):
-            print('  - got to event !=None')
-            self.toneEvents.event_detach(vlc.EventType.MediaPlayerEndReached)
+    def handleEndOperatorOnly(self):
+        """Handle operator-only ending in main thread"""
+        print("  - handleEndOperatorOnly in main thread")
+        
+        self.clearTheLine()
 
-        #  supress further callbacks self.supressCallback
-        # Don't know what this did in software proto
-        # setHelloOnlyCompleted(lineIndex)
-        self.clearTheLine() # lineIndex
-
-        # Check if we've already incremented - this is the key change
+        # Check if we've already incremented
         if not self.incrementJustCalled:
             print(f" - Hello-only ended.  Bump currConvo from {self.currConvo}")
             self.incrementJustCalled = True
             self.currConvo += 1
-            # Timers can't be started from another thread
+            # Now safe to use timer in main thread
             self.setTimeToNextSignal.emit(1000)
         else:
             print(f" - Hello-only ended, but currConvo already incremented to {self.currConvo}")
@@ -219,22 +243,31 @@ class Model(qtc.QObject):
         This just plays the outgoing tone and then starts the full convo
         """
         print(f" -- got to play convo, currConvo: {currConvo}")
+        # Store currConvo for later use
+        self._pendingConvo = currConvo
         # Long VLC way of creating callback
         self.toneEvents.event_attach(vlc.EventType.MediaPlayerEndReached, 
-            self.playFullConvo, currConvo) # playFullConvo(currConvo, lineIndex)
+            self.playFullConvo) # Now without currConvo parameter
         self.tonePlayer.set_media(self.toneMedia)
         self.tonePlayer.play()
 
-    def playFullConvo(self, event, _currConvo):
-        # Stop tone events from calling more times
-        # print("  - About to detach toneEvent playFullConvo")
-        if ( event != None):
-            self.toneEvents.event_detach(vlc.EventType.MediaPlayerEndReached)
+    def playFullConvo(self, event):
+        """VLC callback - must be thread-safe"""
+        if event != None:
+            try:
+                self.toneEvents.event_detach(vlc.EventType.MediaPlayerEndReached)
+            except:
+                pass
+        
+        # Emit signal with stored currConvo
+        self.playFullConvoSignal.emit(self._pendingConvo)
 
+    def handlePlayFullConvo(self, _currConvo):
+        """Handle playing full conversation in main thread"""
         print(f" -- PlayFullConvo {_currConvo}")
         # Set callback for convo track finish
         self.vlcEvent.event_attach(vlc.EventType.MediaPlayerEndReached, 
-            self.setCallCompleted) #  _currConvo, 
+            self.setCallCompleted)
         media = self.vlcInstance.media_new_path("/home/piswitch/Apps/sb-audio/" + 
             conversations[_currConvo]["convoFile"] + ".mp3")
         self.vlcPlayer.set_media(media)
@@ -243,45 +276,57 @@ class Model(qtc.QObject):
 
     def playWrongNum(self, pluggedPersonIdx): # , lineIndex
         print(f" -- [2] got to play wrong number, currConvo: {self.currConvo}")
+        # Store pluggedPersonIdx for later use
+        self._pendingPluggedPerson = pluggedPersonIdx
         # Long VLC way of creating callback
         self.toneEvents.event_attach(vlc.EventType.MediaPlayerEndReached, 
-            self.playFullWrongNum, pluggedPersonIdx) # playFullConvo(currConvo, lineIndex)
+            self.playFullWrongNum)
         self.tonePlayer.set_media(self.toneMedia)
         self.tonePlayer.play()
 
-    def playFullWrongNum(self, event, pluggedPersonIdx): # , lineIndex
-        # wrongNumFile = persons[pluggedPersonIdx]["wrongNumFile"]
-        # disable event
-        print("  - About to detacth toneEventin playFullWrongNum")
+    def playFullWrongNum(self, event): # , lineIndex
+        """VLC callback - must be thread-safe"""
+        print("  - About to detach toneEvent in playFullWrongNum")
+        
+        if event != None:
+            try:
+                self.toneEvents.event_detach(vlc.EventType.MediaPlayerEndReached)
+            except:
+                pass
+        
+        # Emit signal with stored pluggedPersonIdx
+        self.playFullWrongNumSignal.emit(self._pendingPluggedPerson)
 
-        self.toneEvents.event_detach(vlc.EventType.MediaPlayerEndReached) 
-
+    def handlePlayFullWrongNum(self, pluggedPersonIdx):
+        """Handle playing wrong number in main thread"""
         self.displayTextSignal.emit(persons[pluggedPersonIdx]["wrongNumText"])
 
         print(f"  -- Play Wrong Num person {pluggedPersonIdx}")
-        # Set callback for wrongNUm track finish
-
+        # Set callback for wrongNum track finish
         self.vlcEvent.event_attach(vlc.EventType.MediaPlayerEndReached, 
-            self.startPlayRequestCorrect) #  _currConvo, 
+            self.startPlayRequestCorrect)
         
         media = self.vlcInstance.media_new_path("/home/piswitch/Apps/sb-audio/" + 
             persons[pluggedPersonIdx]["wrongNumFile"] + ".mp3")
         self.vlcPlayer.set_media(media)
         self.vlcPlayer.play()
 
-
     def startPlayRequestCorrect(self, event): # , lineIndex
+        """VLC callback - must be thread-safe"""
         print("  - About to detach vlcEvent in startPlayRequestCorrect")
 
-        if (event is not None ):
-            self.vlcEvent.event_detach(vlc.EventType.MediaPlayerEndReached)
+        if event is not None:
+            try:
+                self.vlcEvent.event_detach(vlc.EventType.MediaPlayerEndReached)
+            except:
+                pass
 
-        # self.requestCorrectLine = lineIndex
+        # Emit signal to main thread
+        self.startPlayRequestCorrectThreadSignal.emit()
+
+    def handleStartPlayRequestCorrect(self):
+        """Handle request correct in main thread"""
         self.playRequestCorrectSignal.emit()
-        # self.requestCorrectTimer.start(1000)
-
-    # def startRequestCorrectTimer(self):
-    #     self.requestCorrectTimer.start(500)
 
     # Reply from caller saying who caller really wants
     def playRequestCorrect(self):
@@ -291,7 +336,6 @@ class Model(qtc.QObject):
 
         print("  - About to detach vlcEvent in PlayRequestCorrect")
         self.vlcEvent.event_detach(vlc.EventType.MediaPlayerEndReached) 
-
 
         media = self.vlcInstance.media_new_path("/home/piswitch/Apps/sb-audio/" + 
             conversations[self.currConvo]["retryAfterWrongFile"] + ".mp3")
@@ -326,13 +370,13 @@ class Model(qtc.QObject):
         print("got to setTimeReCall")
         # currConvo is already global
         self.reconnectTimer.start(1000)
-        # recconectTimer will call reCall
+        # reconnectTimer will call reCall
 
     def reCall(self):
         print("got to reCall")
         # Hack: receives reCallLine globally 
         self.playHello(self.currConvo) #, self.reCallLine
-        # calling playHello direclty with callback would send event param
+        # calling playHello directly with callback would send event param
 
     def handlePlugIn(self, personIdx):
         """triggered by control.py
@@ -363,7 +407,7 @@ class Model(qtc.QObject):
                 # See software app for extended debug message here
                 # Stop Buzzer. 
                 self.buzzPlayer.stop()
-                # Blinker handdled in control.py
+                # Blinker handled in control.py
                 self.blinkerStop.emit()
 
                 # print(f" ++ New plugin- prev line in use: {self.prevLineInUse}")
@@ -384,12 +428,10 @@ class Model(qtc.QObject):
                         # Start conversation without the ring
                         # For now anyway can't play full convo without sending event so
 
-
                         # self.playFullConvoNoEvent(self.currConvo)
                         print("  - playFullConvo w/o event ")
-                        # None param is for non-existant event
-                        self.playFullConvo(None, self.currConvo)
-
+                        # Direct call since we're in main thread
+                        self.handlePlayFullConvo(self.currConvo)
 
                     else:
                         print('   We should not get here');
@@ -422,7 +464,6 @@ class Model(qtc.QObject):
                 # Also stop captions
                 self.stopCaptionSignal.emit()
 
-
                 # Set callee -- used by unPlug even if it's the wrong number
                 self.phoneLine["callee"]["index"] = personIdx
                 if (personIdx == self.currCalleeIndex): # Correct callee
@@ -443,9 +484,7 @@ class Model(qtc.QObject):
                     self.playWrongNum(personIdx) 
 
             else:
-        
                 print("got to Tressa erroneous plug-in")
-
 
     def handleUnPlug(self, personIdx): 
         """ triggered by control.py
@@ -472,7 +511,7 @@ class Model(qtc.QObject):
 
             # Check to see if Both were unplugged
             # Maybe look at pinsIn -- if only one was unplugged then the other 
-            # pin should be in. Be aware of the 150 finishCheck timeer -- 
+            # pin should be in. Be aware of the 150 finishCheck timer -- 
             # Do my business here within that time 
             # And don't forget to check enough time to decide whether to start 
             # over or continue.
@@ -492,24 +531,7 @@ class Model(qtc.QObject):
                   f'    caller index: {self.phoneLine["caller"]["index"]}')
 
             print(f'  -- unplugStatus: {self.phoneLine["unPlugStatus"]}')
-            # if unplugStatus is 1 that is WrongNumInProg and we should __?
-            # I get here whether I've unplugged during the wrong answer or after it's finished
-            # If wrong number, hmm need plug status for wrong number
-            # if (self.phoneLine["unPlugStatus"] == 1): # WRONG_NUM_IN_PROGRESS
-            #     print(' -- [3] got to unplug while WrongINProg')
-            #     self.vlcPlayer.stop() 
-            #     self.vlcEvent.event_detach(vlc.EventType.MediaPlayerEndReached)
-            #     # if (personIdx < 99):
-            #     self.setLEDSignal.emit(personIdx, False)
-            #     # clear the unplug status
-            #     self.phoneLine["unPlugStatus"] = self.NO_UNPLUG_STATUS
 
-            #     print(' -- [3.2] would be doing: startPlayRequestCorrect')
-            #     # self.startPlayRequestCorrect(None)
-
-            # # First, maybe this is an unplug of "old" call to free up the plugg
-            # # caller would be plugged
-            # elif (self.phoneLine["caller"]["isPlugged"] == True):
             if (self.phoneLine["caller"]["isPlugged"] == True):
                 # Caller has initiated a call
 
@@ -525,7 +547,8 @@ class Model(qtc.QObject):
                         stopTime > conversations[self.currConvo]["okTimeHello"]):
                         # Close enough to end, move on 
                         print(f'  - stopped operator only caller with time: {stopTime}')
-                        self.endOperatorOnlyHello(None)
+                        # Direct call since we're in main thread
+                        self.handleEndOperatorOnly()
                     else:
                         self.clearTheLine()
                         self.callInitTimer.start(1000)
@@ -555,7 +578,7 @@ class Model(qtc.QObject):
 
     def checkDualUnplug(self):
         print(' - got to checkDualUnplug, need to actually check!')
-        # if such & so do somethingelse
+        # if such & so do something else
         self.continueSingleEngagedUnplug(self.currPersonIdx, self.currStopTime)
 
     def continueSingleEngagedUnplug(self, personIdx, stopTime):
@@ -579,7 +602,8 @@ class Model(qtc.QObject):
             else:
                 # Late in call -- end convo and move on
                 print(f'  - stopped with time: {stopTime}')
-                self.setCallCompleted(self)
+                # Direct call since we're in main thread
+                self.handleSetCallCompleted()
 
         # caller unplugged
         elif (self.phoneLine["caller"]["index"] == personIdx): 
@@ -596,31 +620,31 @@ class Model(qtc.QObject):
             print('    This should not happen')
 
     def setCallCompleted(self, event=None): #, _currConvo, lineIndex
+        """VLC callback - must be thread-safe"""
         # Disable callback if present
-        if (event != None):
-            self.vlcEvent.event_detach(vlc.EventType.MediaPlayerEndReached)
-                
+        if event != None:
+            try:
+                self.vlcEvent.event_detach(vlc.EventType.MediaPlayerEndReached)
+            except:
+                pass
+        
+        # Emit signal to main thread
+        self.setCallCompletedSignal.emit()
+
+    def handleSetCallCompleted(self):
+        """Handle call completion in main thread"""
         print(f" -- setCallCompleted. Convo: {self.currConvo}")
         # Stop call
         self.stopCall()
-
-        # # print("other line has neither caller nor callee plugged")
-        # if (self.phoneLines[otherLineIdx]["unPlugStatus"] == self.REPLUG_IN_PROGRESS):
 
         # Workaround to stop double calling
         if not self.incrementJustCalled:
             self.incrementJustCalled = True
             print(f' -  increment from {self.currConvo} and start regular timer for next call.')
-            # Uptick currConvo here, when call is comlete
+            # Uptick currConvo here, when call is complete
             self.currConvo += 1
             # Use signal rather than calling callInitTimer bcz threads
             self.setTimeToNextSignal.emit(1000)
-
-        # When call 0 ends, do nothing. But how do I kmow this is is 0 ending since
-        # currConvo has already been incremented to 1. When 1 ends I do want to increment.    
-        
-        # if (self.interruptingCallInHasBeenInitiated):
-        #     print("-- Interrupting call has been initiated -- and is ending, do nothing.")    
 
     def stopCall(self): # , lineIndex
         self.clearTheLine()
@@ -659,19 +683,37 @@ class Model(qtc.QObject):
         self.setTimeToNextSignal.emit(1000) # calls setTimeToNext
 
     def restartOnTimeout(self, event):
-        print(' - auto starting reset')
-        self.buzzEvents.event_detach(vlc.EventType.MediaPlayerEndReached)
+        """VLC callback - must be thread-safe"""
+        print(' - auto starting reset (VLC callback)')
+        try:
+            self.buzzEvents.event_detach(vlc.EventType.MediaPlayerEndReached)
+        except:
+            pass
+        
+        # Emit signal to main thread
+        self.restartOnTimeoutSignal.emit()
+
+    def handleRestartOnTimeout(self):
+        """Handle restart in main thread"""
+        print(' - handling restart in main thread')
         self.blinkerStop.emit()
         self.stopSimSignal.emit()
 
     def restartOnEndTimeout(self, event):
-        print(' - Starting reset after End')
-        self.vlcEvent.event_detach(vlc.EventType.MediaPlayerEndReached)
+        """VLC callback - must be thread-safe"""
+        print(' - Starting reset after End (VLC callback)')
+        try:
+            self.vlcEvent.event_detach(vlc.EventType.MediaPlayerEndReached)
+        except:
+            pass
 
-        # Can't call endTimer directly, so signal
+        # Emit signal to main thread
+        self.restartOnEndTimeoutSignal.emit()
+
+    def handleRestartOnEndTimeout(self):
+        """Handle restart after end in main thread"""
         # This signal will call startEndTimer
         self.setTimeToEndSignal.emit()
-        # Couldn't use setTimeToNextSignal because that's hard-wired to starting calls
 
     def startEndTimer(self):
         # Timer will call self.stopSimSignal.emit()
