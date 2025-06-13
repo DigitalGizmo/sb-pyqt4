@@ -522,7 +522,9 @@ class Model(qtc.QObject):
             print(' - got to engaged unplug, calling check dual')
             # Can't call timer directly, so setting temp variables
             # and starting timer with this signal
-            self.checkDualUnplugSignal.emit(90)
+
+
+            # self.checkDualUnplugSignal.emit(90)
             
         # ---- Conversation NOT in progress --- 
         else:   
@@ -571,6 +573,36 @@ class Model(qtc.QObject):
         # self.setPinInLine(personIdx, -1)
         self.setPinIn(personIdx, False)
         print(f" - pin {personIdx} is now {self.pinsIn[personIdx]}")
+
+    # In model.py, add this method:
+    def handleDualUnplug(self, pin1, pin2):
+        """Handle the case where both caller and callee unplug simultaneously during active call"""
+        print(f" - handleDualUnplug: pins {pin1} and {pin2} unplugged together during active call")
+        
+        # Stop the audio immediately
+        self.vlcPlayer.stop()
+        
+        # Stop subtitles
+        self.stopCaptionSignal.emit()
+        
+        # Clear both pins
+        self.setPinIn(pin1, False)
+        self.setPinIn(pin2, False)
+        
+        # Turn off both LEDs
+        self.setLEDSignal.emit(pin1, False)
+        self.setLEDSignal.emit(pin2, False)
+        
+        # Clear the line completely
+        self.clearTheLine()
+        
+        # Display appropriate message
+        self.displayTextSignal.emit("Both parties disconnected")
+        
+        # Move to next call after a short delay
+        print(f" - Dual unplug handled, moving to next call")
+        self.currConvo += 1
+        self.setTimeToNextSignal.emit(2000)  # 2 second delay before next call
 
     def setDualUnplugTimer(self):
         # Timer will call 

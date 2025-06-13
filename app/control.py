@@ -4,6 +4,7 @@ from PyQt5 import QtWidgets as qtw
 from PyQt5 import QtCore as qtc
 from PyQt5.QtGui import QFont
 from PyQt5.QtWidgets import QDesktopWidget
+from PyQt5.QtCore import QMutex, QMutexLocker
 
 # import vlc
 import board
@@ -22,7 +23,8 @@ class MainWindow(qtw.QMainWindow):
     plugEventDetected = qtc.pyqtSignal()
     plugInToHandle = qtc.pyqtSignal(int)
     unPlugToHandle = qtc.pyqtSignal(int)
-    
+    dualUnplugToHandle = qtc.pyqtSignal(int, int)  # pin1, pin2
+
     # NEW: Thread-safe signal for GPIO interrupts
     gpioInterruptSignal = qtc.pyqtSignal(list)  # Will carry the list of interrupt flags
     
@@ -110,7 +112,16 @@ class MainWindow(qtw.QMainWindow):
         self.model.displayCaptionSignal.connect(self.displayCaptions)
         self.model.stopCaptionSignal.connect(self.stopCaptions)
         self.model.stopSimSignal.connect(self.stopSim)
+        self.dualUnplugToHandle.connect(self.model.handleDualUnplug)
    
+        # Add tracking for pending interrupts
+        self.pending_interrupts = []  # Track interrupts that haven't been processed yet
+        self.interrupt_lock = qtc.QMutex()  # Thread safety for pending_interrupts
+
+        # Enhanced tracking for dual-unplug detection
+        self.unplug_history = []  # Track all unplugs with timestamps
+        self.last_unplug_time = None
+        self.last_unplug_pin = -1
 
         # Initialize the I2C bus:
         i2c = busio.I2C(board.SCL, board.SDA)
@@ -180,17 +191,82 @@ class MainWindow(qtw.QMainWindow):
 
     def handleGpioInterrupt(self, interrupt_data):
         """Handle GPIO interrupts in the main thread where Qt operations are safe"""
+        current_time = qtc.QTime.currentTime()
+        unplugs_detected = []
+        
+        # First, collect all unplugs from this interrupt batch
         for pin_flag, pin_value in interrupt_data:
             print(f"* Interrupt - pin number: {pin_flag} changed to: {pin_value}")
-
+            
+            # Check if this is an unplug (pin went high and was previously in)
+            if (pin_flag < 12 and 
+                pin_value == True and 
+                self.model.getIsPinIn(pin_flag)):
+                unplugs_detected.append(pin_flag)
+        
+        # Add unplugs to history
+        for pin in unplugs_detected:
+            self.unplug_history.append({
+                'pin': pin,
+                'time': current_time,
+                'processed': False
+            })
+            # Keep only last 5 seconds of history
+            five_seconds_ago = current_time.addSecs(-5)
+            self.unplug_history = [u for u in self.unplug_history if u['time'] > five_seconds_ago]
+        
+        # Print current pin states for debugging
+        if unplugs_detected:
+            print(f" DEBUG: Unplugs detected: {unplugs_detected}")
+            print(f" DEBUG: Current pin states (0-11): ", end="")
+            for i in range(12):
+                print(f"{i}:{'IN' if self.model.getIsPinIn(i) else 'OUT'} ", end="")
+            print()
+            print(f" DEBUG: Unplug history: {[(u['pin'], u['time'].toString('hh:mm:ss.zzz')) for u in self.unplug_history[-5:]]}")
+        
+        # Check for dual-unplug scenario
+        dual_unplug = False
+        
+        # Case 1: Multiple unplugs in same interrupt batch
+        if len(unplugs_detected) >= 2:
+            print(f" ** DUAL-UNPLUG DETECTED (same batch): pins {unplugs_detected[0]} and {unplugs_detected[1]} unplugged together")
+            dual_unplug = True
+        
+        # Case 2: Check against recent unplugs in history
+        elif len(unplugs_detected) == 1:
+            current_pin = unplugs_detected[0]
+            # Look for another unplug in recent history
+            for hist in reversed(self.unplug_history[:-1]):  # Skip the current one
+                time_diff = hist['time'].msecsTo(current_time)
+                if time_diff < 500 and hist['pin'] != current_pin:  # Within 500ms
+                    print(f" ** DUAL-UNPLUG DETECTED (from history): pins {hist['pin']} and {current_pin} unplugged within {time_diff}ms")
+                    dual_unplug = True
+                    break
+        
+        # Update last unplug tracking
+        if unplugs_detected:
+            self.last_unplug_time = current_time
+            self.last_unplug_pin = unplugs_detected[-1]
+        
+        # Process interrupts normally
+        for pin_flag, pin_value in interrupt_data:
             # Test for phone jack vs start and stop buttons
             if pin_flag < 12:
+                # Track if this interrupt is being processed or ignored
+                if (pin_value == True and self.model.getIsPinIn(pin_flag)):
+                    if self.just_checked:
+                        print(f" * Interrupt for pin {pin_flag} (unplug) ignored due to just_checked")
+                
                 # Don't restart this interrupt checking if we're still
                 # in the pause part of bounce checking
                 if not self.just_checked:
                     self.pinFlag = pin_flag
                     self.plugEventDetected.emit()
-                    # Starts bounceTimer which calls continueCheckPin
+                    # Mark this unplug as being processed
+                    for u in self.unplug_history:
+                        if u['pin'] == pin_flag and not u['processed']:
+                            u['processed'] = True
+                            break
 
             else:
                 print(" * got to interrupt 12 or greater \n")
@@ -287,11 +363,46 @@ class MainWindow(qtw.QMainWindow):
         # self.setLED(6, True)          
         # self.setLED(2, True)          
 
+    # Modified continueCheckPin to emit signal during active calls:
     def continueCheckPin(self):
+        """Modified to detect ghost unplugs and handle dual-unplugs during active calls"""
         # Not able to send param through timer, so pinFlag has been set globally
         print(f" * In continue, pinFlag = {str(self.pinFlag)} " 
-              f"  * value: {str(self.pins[self.pinFlag].value)}")
-
+            f"  * value: {str(self.pins[self.pinFlag].value)}")
+        
+        # === GHOST UNPLUG DETECTION ===
+        # When we process an unplug, check if any other "IN" pins are actually unplugged
+        if (self.pins[self.pinFlag].value == True and self.model.getIsPinIn(self.pinFlag)):
+            # This is an unplug - check for ghost unplugs
+            ghost_unplugs = []
+            for i in range(12):
+                if i != self.pinFlag and self.model.getIsPinIn(i):
+                    # Model thinks this pin is IN, but let's check actual state
+                    actual_value = self.pins[i].value
+                    if actual_value == True:  # Pin is actually unplugged!
+                        ghost_unplugs.append(i)
+                        print(f" ** GHOST UNPLUG DETECTED: pin {i} is physically unplugged but didn't generate interrupt!")
+            
+            if ghost_unplugs:
+                print(f" ** DUAL-UNPLUG DETECTED (with ghost): pin {self.pinFlag} interrupted, pin(s) {ghost_unplugs} silently unplugged")
+                
+                # Check if this is during an active call
+                if self.model.phoneLine["isEngaged"]:
+                    print(f" ** DUAL-UNPLUG during ACTIVE CALL - handling both pins together")
+                    # Emit dual-unplug signal instead of single unplug
+                    self.dualUnplugToHandle.emit(self.pinFlag, ghost_unplugs[0])
+                    # Skip the normal single unplug processing
+                    qtc.QTimer.singleShot(150, self.delayedFinishCheck)
+                    return
+        
+        # Check if there's another recent unplug we should know about
+        current_time = qtc.QTime.currentTime()
+        for hist in reversed(self.unplug_history):
+            if hist['pin'] != self.pinFlag and not hist['processed']:
+                time_diff = hist['time'].msecsTo(current_time)
+                if time_diff < 500:
+                    print(f" ** POSSIBLE DUAL-UNPLUG: pin {hist['pin']} was unplugged {time_diff}ms ago")
+        
         if (self.awaitingRestart):
             # do nothing - awaiting press of start button
             print(' * awaiting restart')
@@ -308,24 +419,18 @@ class MainWindow(qtw.QMainWindow):
             # Unplug
             else: # pin flag True, still, or again, high
                 # aka not connected
-                # print(f"  ** got to pin disconnected in continueCheckPin")
-
                 # was this a legit unplug?
                 if (self.model.getIsPinIn(self.pinFlag)):
                     # if this pin was in
-                    # print(f"Pin {self.pinFlag} has been disconnected \n")
                     print(f" * pin {self.pinFlag} was in - handleUnPlug")
-
                     # On unplug we can't tell which line electronically 
                     # (diff in shaft is gone), so rely on pinsIn info
-                    self.unPlugToHandle.emit(self.pinFlag) # , self.whichLinePlugging
-                    # Model handleUnPlug will set pinsIn false for this on
+                    self.unPlugToHandle.emit(self.pinFlag)
+                    # Model handleUnPlug will set pinsIn false for this one
                 else:
                     print(" ** got to pin true (changed to high), but not pin in")
 
-        # Delay setting just_check to false in case the plug is wiggled
-        # qtc.QTimer.singleShot(300, self.delayedFinishCheck)
-        # qtc.QTimer.singleShot(70, self.delayedFinishCheck)
+        # Delay setting just_checked to false in case the plug is wiggled
         qtc.QTimer.singleShot(150, self.delayedFinishCheck)
 
     def delayedFinishCheck(self):
