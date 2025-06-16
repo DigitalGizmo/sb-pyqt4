@@ -481,6 +481,10 @@ class Model(qtc.QObject):
             else:
                 print("got to Tressa erroneous plug-in")
 
+    def shouldRetryCall(self, stopTime):
+            """Determine if call should be retried based on stop time"""
+            return stopTime < conversations[self.currConvo]["okTimeConvo"]
+
     def handleUnPlug(self, personIdx): 
         """ triggered by control.py
         """
@@ -513,13 +517,13 @@ class Model(qtc.QObject):
                 print('   Unplugging callee. stopTime: ' + str(stopTime))
                 # Turn off callee LED
                 self.setLEDSignal.emit(self.phoneLine["callee"]["index"], False)
+                # Mark callee unplugged
+                self.phoneLine["callee"]["isPlugged"] = False
+                self.phoneLine["isEngaged"] = False
 
                 # If Early in call, retry
-                if (stopTime < conversations[self.currConvo]["okTimeConvo"]):
-                    # Restart this answer to cal
-                    # Mark callee unplugged
-                    self.phoneLine["callee"]["isPlugged"] = False
-                    self.phoneLine["isEngaged"] = False
+                if self.shouldRetryCall(stopTime):
+                    # Restart this answer to call
                     # stop captions
                     self.stopCaptionSignal.emit()
                     # Leave caller plugged in, replay hello
@@ -539,6 +543,8 @@ class Model(qtc.QObject):
                 self.phoneLine["unPlugStatus"] = self.CALLER_UNPLUGGED
                 # Turn off caller LED
                 self.setLEDSignal.emit(self.phoneLine["caller"]["index"], False)
+                
+                # For caller unplug, we don't check time - always move to next
                 # signal calls callInitTimer which calls initiateCall	
                 self.setTimeToNextSignal.emit(1000)					
             else: 
@@ -592,10 +598,13 @@ class Model(qtc.QObject):
         self.setPinIn(personIdx, False)
         print(f" - pin {personIdx} is now {self.pinsIn[personIdx]}")
 
-    # In model.py, add this method:
     def handleDualUnplug(self, pin1, pin2):
         """Handle the case where both caller and callee unplug simultaneously during active call"""
         print(f" - handleDualUnplug: pins {pin1} and {pin2} unplugged together during active call")
+        
+        # Get stop time before stopping audio
+        stopTime = self.vlcPlayer.get_time()
+        print(f"  - Dual unplug at time: {stopTime}")
         
         # Stop the audio immediately
         self.vlcPlayer.stop()
@@ -611,20 +620,30 @@ class Model(qtc.QObject):
         self.setLEDSignal.emit(pin1, False)
         self.setLEDSignal.emit(pin2, False)
         
-        # Clear the line completely
-        self.clearTheLine()
-        
-        # Display appropriate message
-        self.displayTextSignal.emit("Both parties disconnected")
-        
-        # Move to next call after a short delay
-        print(f" - Dual unplug handled, moving to next call")
-        self.currConvo += 1
-        self.setTimeToNextSignal.emit(2000)  # 2 second delay before next call
+        # Check if we should retry based on time
+        if self.shouldRetryCall(stopTime):
+            print(f"  - Early dual unplug (time: {stopTime}), restarting call")
+            # Clear the line but keep the call state
+            self.phoneLine["caller"]["isPlugged"] = False
+            self.phoneLine["callee"]["isPlugged"] = False
+            self.phoneLine["isEngaged"] = False
+            # Display message
+            self.displayTextSignal.emit("Both parties disconnected early - restarting call")
+            # Restart the current call
+            self.setTimeToNextSignal.emit(1000)  # This will re-initiate current call
+        else:
+            print(f"  - Late dual unplug (time: {stopTime}), moving to next call")
+            # Clear the line completely
+            self.clearTheLine()
+            # Display appropriate message
+            self.displayTextSignal.emit("Call completed - both parties disconnected")
+            # Move to next call
+            self.currConvo += 1
+            self.setTimeToNextSignal.emit(2000)  # 2 second delay before next call
 
-    def setDualUnplugTimer(self):
-        # Timer will call 
-        self.dualUnplugTimer.start(90)
+    # def setDualUnplugTimer(self):
+    #     # Timer will call 
+    #     self.dualUnplugTimer.start(90)
 
     def setCallCompleted(self, event=None): #, _currConvo, lineIndex
         """VLC callback - must be thread-safe"""
