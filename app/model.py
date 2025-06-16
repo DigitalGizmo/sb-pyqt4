@@ -30,7 +30,6 @@ class Model(qtc.QObject):
     setTimeToNextSignal = qtc.pyqtSignal(int)
     # setTimeToEndSignal = qtc.pyqtSignal(int)
     setTimeToEndSignal = qtc.pyqtSignal()
-    checkDualUnplugSignal = qtc.pyqtSignal(int)
     playRequestCorrectSignal = qtc.pyqtSignal()
     
     # NEW: Thread-safe signals for VLC callbacks
@@ -57,10 +56,6 @@ class Model(qtc.QObject):
     vlcPlayer = vlcInstance.media_player_new()
     vlcEvent = vlcPlayer.event_manager()
 
-    dualUnplugTimer = qtc.QTimer()
-    dualUnplugTimer.setSingleShot(True)
-    # connect defined in _init_    
-
     def __init__(self):
         super().__init__()
         self.callInitTimer = qtc.QTimer()
@@ -83,8 +78,8 @@ class Model(qtc.QObject):
         self.setTimeToEndSignal.connect(self.startEndTimer)
 
         # signal calls timer directly
-        self.checkDualUnplugSignal.connect(self.dualUnplugTimer.start)
-        self.dualUnplugTimer.timeout.connect(self.checkDualUnplug)
+        # self.checkDualUnplugSignal.connect(self.dualUnplugTimer.start)
+        # self.dualUnplugTimer.timeout.connect(self.checkDualUnplug)
         
         # NEW: Connect thread-safe VLC signals to their handlers
         self.endOperatorOnlySignal.connect(self.handleEndOperatorOnly)
@@ -509,23 +504,46 @@ class Model(qtc.QObject):
             # Clear Transcript 
             self.displayTextSignal.emit("Call disconnected..")
 
-            # Check to see if Both were unplugged
-            # Maybe look at pinsIn -- if only one was unplugged then the other 
-            # pin should be in. Be aware of the 150 finishCheck timer -- 
-            # Do my business here within that time 
-            # And don't forget to check enough time to decide whether to start 
-            # over or continue.
-            # if
-
             self.currPersonIdx = personIdx
             self.currStopTime = stopTime
-            print(' - got to engaged unplug, calling check dual')
-            # Can't call timer directly, so setting temp variables
-            # and starting timer with this signal
+            print(' - got to engaged unplug')
 
+            # Engaged call, callee unplugged
+            if (self.phoneLine["callee"]["index"] == personIdx):  
+                print('   Unplugging callee. stopTime: ' + str(stopTime))
+                # Turn off callee LED
+                self.setLEDSignal.emit(self.phoneLine["callee"]["index"], False)
 
-            # self.checkDualUnplugSignal.emit(90)
-            
+                # If Early in call, retry
+                if (stopTime < conversations[self.currConvo]["okTimeConvo"]):
+                    # Restart this answer to cal
+                    # Mark callee unplugged
+                    self.phoneLine["callee"]["isPlugged"] = False
+                    self.phoneLine["isEngaged"] = False
+                    # stop captions
+                    self.stopCaptionSignal.emit()
+                    # Leave caller plugged in, replay hello
+                    self.setTimeReCall(self.currConvo)
+                else:
+                    # Late in call -- end convo and move on
+                    print(f'  - stopped with time: {stopTime}')
+                    # Direct call since we're in main thread
+                    self.handleSetCallCompleted()
+
+            # Engaged call, caller unplugged
+            elif (self.phoneLine["caller"]["index"] == personIdx): 
+                print(" Caller just unplugged")
+                self.phoneLine["caller"]["isPlugged"] = False
+                self.phoneLine["isEngaged"] = False
+                # Also
+                self.phoneLine["unPlugStatus"] = self.CALLER_UNPLUGGED
+                # Turn off caller LED
+                self.setLEDSignal.emit(self.phoneLine["caller"]["index"], False)
+                # signal calls callInitTimer which calls initiateCall	
+                self.setTimeToNextSignal.emit(1000)					
+            else: 
+                print('    This should not happen')
+
         # ---- Conversation NOT in progress --- 
         else:   
             # Phone line is not engaged -- isEngaged == False
@@ -607,49 +625,6 @@ class Model(qtc.QObject):
     def setDualUnplugTimer(self):
         # Timer will call 
         self.dualUnplugTimer.start(90)
-
-    def checkDualUnplug(self):
-        print(' - got to checkDualUnplug, need to actually check!')
-        # if such & so do something else
-        self.continueSingleEngagedUnplug(self.currPersonIdx, self.currStopTime)
-
-    def continueSingleEngagedUnplug(self, personIdx, stopTime):
-        # print(' - got to continue single unplug')
-        # callee just unplugged
-        if (self.phoneLine["callee"]["index"] == personIdx):  
-            print('   Unplugging callee. stopTime: ' + str(stopTime))
-            # Turn off callee LED
-            self.setLEDSignal.emit(self.phoneLine["callee"]["index"], False)
-
-            # If Early in call, retry
-            if (stopTime < conversations[self.currConvo]["okTimeConvo"]):
-                # Restart this answer to cal
-                # Mark callee unplugged
-                self.phoneLine["callee"]["isPlugged"] = False
-                self.phoneLine["isEngaged"] = False
-                # stop captions
-                self.stopCaptionSignal.emit()
-                # Leave caller plugged in, replay hello
-                self.setTimeReCall(self.currConvo)
-            else:
-                # Late in call -- end convo and move on
-                print(f'  - stopped with time: {stopTime}')
-                # Direct call since we're in main thread
-                self.handleSetCallCompleted()
-
-        # caller unplugged
-        elif (self.phoneLine["caller"]["index"] == personIdx): 
-            print(" Caller just unplugged")
-            self.phoneLine["caller"]["isPlugged"] = False
-            self.phoneLine["isEngaged"] = False
-            # Also
-            self.phoneLine["unPlugStatus"] = self.CALLER_UNPLUGGED
-            # Turn off caller LED
-            self.setLEDSignal.emit(self.phoneLine["caller"]["index"], False)
-            # signal calls callInitTimer which calls initiateCall	
-            self.setTimeToNextSignal.emit(1000)					
-        else: 
-            print('    This should not happen')
 
     def setCallCompleted(self, event=None): #, _currConvo, lineIndex
         """VLC callback - must be thread-safe"""
