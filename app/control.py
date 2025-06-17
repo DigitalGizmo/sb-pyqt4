@@ -305,11 +305,6 @@ class MainWindow(qtw.QMainWindow):
             self.captionTimer.stop()  
 
     def reset(self):
-        # Remove the existing event detection
-        try:
-            GPIO.remove_event_detect(self.interrupt)
-        except:
-            pass
         # Clear interrupts
         self.mcp.clear_ints()
         
@@ -339,8 +334,7 @@ class MainWindow(qtw.QMainWindow):
         # Ensure all VLC event handlers are detached
         self.model.detachAllEventHandlers()
 
-        # Maybe move these to stopMedia()
-        # self.stopMedia()
+        # Stop any active timers
         if self.bounceTimer.isActive():
             self.bounceTimer.stop()
         if self.blinkTimer.isActive():
@@ -352,13 +346,7 @@ class MainWindow(qtw.QMainWindow):
         self.mcp.interrupt_configuration = 0x0000  # interrupt on any change
         self.mcp.io_control = 0x44  # Interrupt as open drain and mirrored
         self.mcp.clear_ints()  # Final clear of interrupts
-        
-        # Set up the GPIO pin again before adding event detection
-        GPIO.setup(self.interrupt, GPIO.IN, GPIO.PUD_UP)
-
-        # Re-add the event detection
-        GPIO.add_event_detect(self.interrupt, GPIO.BOTH, callback=self.checkPin, bouncetime=50)        
-
+    
         # self.setLED(0, True)          
         # self.setLED(6, True)          
         # self.setLED(2, True)          
