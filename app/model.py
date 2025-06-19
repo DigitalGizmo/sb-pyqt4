@@ -581,7 +581,10 @@ class Model(qtc.QObject):
                 elif (self.phoneLine["unPlugStatus"] == self.WRONG_NUM_IN_PROGRESS):
                     # Unplugging wrong num
                     print(f' -- |2| Unplug on wrong number, personIdx: {personIdx}')
-                    self.vlcPlayer.stop() 
+
+                    # Don't stop the request for the right number so soon
+                    # self.vlcPlayer.stop() 
+
                     # Cover for before personidx defined
                     if (personIdx < 99):
                         self.setLEDSignal.emit(personIdx, False)
