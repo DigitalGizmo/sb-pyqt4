@@ -90,6 +90,17 @@ class MainWindow(qtw.QMainWindow):
         self.captions = 'empty'
         self.areCaptionsContinuing = True
 
+        # === MISUSE DETECTION ===
+        # Track plug-ins to detect rapid/chaotic usage
+        self.plugin_history = []  # List of (time, pin) tuples
+        self.MISUSE_THRESHOLD = 4  # Number of plug-ins
+        self.MISUSE_WINDOW = 12000  # 12 seconds in milliseconds
+        
+        # Timer to periodically clean old plug-in history
+        self.cleanupTimer = qtc.QTimer()
+        self.cleanupTimer.timeout.connect(self.cleanupPluginHistory)
+        self.cleanupTimer.start(5000)  # Clean every 5 seconds
+
         # Self (control) for gpio related, self.model for audio
         self.startPressed.connect(self.startSim)
 
@@ -170,6 +181,48 @@ class MainWindow(qtw.QMainWindow):
 
         GPIO.setup(self.interrupt, GPIO.IN, GPIO.PUD_UP)
         GPIO.add_event_detect(self.interrupt, GPIO.BOTH, callback=self.checkPin, bouncetime=50)
+
+    def checkForMisuse(self):
+        """Check if user is plugging in too rapidly"""
+        current_time = qtc.QTime.currentTime()
+        
+        # Remove old entries outside the window
+        cutoff_time = current_time.addMSecs(-self.MISUSE_WINDOW)
+        self.plugin_history = [(t, p) for t, p in self.plugin_history if t > cutoff_time]
+        
+        # Check if we've exceeded the threshold
+        if len(self.plugin_history) >= self.MISUSE_THRESHOLD:
+            print(f" *** MISUSE DETECTED: {len(self.plugin_history)} plug-ins within {self.MISUSE_WINDOW/1000} seconds")
+            # Stop everything
+            self.handleMisuse()
+            return True
+        return False
+    
+    def handleMisuse(self):
+        """Handle detected misuse by stopping simulation with message"""
+        print(" * Got to handleMisuse -- stopping")
+        # Clear plugin history to prevent repeated triggers
+        self.plugin_history.clear()
+        
+        # Display message
+        self.displayText("Looks like a confusing situation.\nPress the Start button to start over -- calmly -- one thing at a time!.")
+        
+        # Stop the simulation
+        self.stopMedia()
+        
+        # Log the misuse
+        print(" *** Simulation stopped due to rapid plug-ins (misuse detected)")
+    
+    def cleanupPluginHistory(self):
+        """Periodically clean old entries from plugin history"""
+        if self.plugin_history:
+            current_time = qtc.QTime.currentTime()
+            cutoff_time = current_time.addMSecs(-self.MISUSE_WINDOW)
+            old_count = len(self.plugin_history)
+            self.plugin_history = [(t, p) for t, p in self.plugin_history if t > cutoff_time]
+            if old_count != len(self.plugin_history):
+                print(f" - Cleaned {old_count - len(self.plugin_history)} old plug-in entries")
+
 
     def checkPin(self, port):
         """GPIO interrupt callback - runs in interrupt thread.
@@ -303,6 +356,8 @@ class MainWindow(qtw.QMainWindow):
             self.blinkTimer.stop()            
         if self.captionTimer.isActive():
             self.captionTimer.stop()  
+        if self.cleanupTimer.isActive():
+            self.cleanupTimer.stop()
 
     def reset(self):
         # Clear interrupts
@@ -341,6 +396,9 @@ class MainWindow(qtw.QMainWindow):
             self.blinkTimer.stop()            
         if self.captionTimer.isActive():
             self.captionTimer.stop()  
+
+        # Clear misuse detection state
+        self.plugin_history.clear()
 
         # Reconfigure the MCP23017 interrupt system
         self.mcp.interrupt_configuration = 0x0000  # interrupt on any change
@@ -401,6 +459,16 @@ class MainWindow(qtw.QMainWindow):
                 """
                 False/grounded, then this event is a plug-in
                 """
+
+                # === MISUSE DETECTION - Track plug-ins ===
+                current_time = qtc.QTime.currentTime()
+                self.plugin_history.append((current_time, self.pinFlag))
+                
+                # Check for misuse
+                if self.checkForMisuse():
+                    # Misuse detected, don't process this plug-in
+                    return
+
                 # Send pin index to model.py as an int 
                 # Model uses signals for LED, text and pinsIn to set here
                 self.plugInToHandle.emit(self.pinFlag)
