@@ -488,7 +488,7 @@ class Model(qtc.QObject):
     def handleUnPlug(self, personIdx): 
         """ triggered by control.py
         """
-        print( f" - Index {personIdx} Unplugged with line status of: {self.phoneLine['unPlugStatus']}\n"
+        print( f" - Index {personIdx} Unplugged with unplugStatus of: {self.phoneLine['unPlugStatus']}\n"
                f"     while line isEngaged = {self.phoneLine['isEngaged']}"
             )
         # if not during restart!
@@ -592,9 +592,16 @@ class Model(qtc.QObject):
                     self.phoneLine["unPlugStatus"] = self.NO_UNPLUG_STATUS
                 else: # Not unplugging wrong - do nothing
                     print(" just unplugging to free up a plug")
-
+            elif (self.phoneLine["unPlugStatus"] == self.CALLER_UNPLUGGED):
+                print(" - callee unplugged while caller unplugged ")
+                # Turn off LED
+                self.setLEDSignal.emit(personIdx, False)
+                # Set unplug status to default
+                self.phoneLine["unPlugStatus"] = self.NO_UNPLUG_STATUS
+                # This should lead to just starting the current call over
+                   
             else: # caller not plugged
-                print(" * nothing going on, just unplugging ")
+                print(" - nothing going on, just unplugging ")
 
         # After all is said and done, this was unplugged, So, set pinIn False
         # self.setPinInLine(personIdx, -1)
